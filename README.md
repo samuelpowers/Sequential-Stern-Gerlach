@@ -9,4 +9,4 @@ math
 numpy
 matplotlib.pyplot
 
-The code is writted to generally coincide with the notation used in the associated paper. We welcome questions about and or contributions to this code from anyone interested in the research. Please contact Sam Powers at sampower@buffalo.edu with questions or requests.
+The code is written to generally coincide with the notation used in the associated paper. We welcome questions about and or contributions to this code from anyone interested in the research. Please contact Sam Powers at sampower@buffalo.edu with questions or requests.
