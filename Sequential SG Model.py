@@ -5,104 +5,127 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-# Computational time increases with increasing n.
-n = 50
 
-# Computational time increases with increasing j and decreasing magnitude of m.
+# This program generates probability distributions over theta_ab for any choice of n, j, m_a1, m_b2, and possibly l_a1.
+# It is not written for computational speed!
+
+# Begin user Inputs:
+# Note: computational time increases with increasing n, increasing j, and decreasing magnitude of m and l.
+n = 200
 j = 2
-m_a1 = 1
+m_a1 = 0
 m_b2 = 0
 
-# If false, l_a1 will be taken as an additional conditioning variable
-# The false condition significantly decreases computational time
+# Treat l_at as a nuisance variable (Increases )?
 s_l_a1 = False
-
-# If s_l_a1 = False, then a value of l_a1 must be chosen. This value must not exceed |(n/2)-j| in magnitude
-# This value must always be separated from |(n/2)-j| by an integer. Errors will occur otherwise.
-l_a1 = 0
-
-# Coefficient array calculated by Mathematica
-# Each row of the coefficient matrix is associated with a count (AA,AB,BA,BB,CC,CD,DC,DD)
-# Each column of the matrix is associated with a quantum number (n,j,ma1,mb2,la1,lb2,bmap,DD)
-# We use DD rather than mu in this program because its range is simpler to define (see path_counter function)
-# The quantum number mu is then defined within the cardinality functions for Alice's and Bob's sub-ensembles
-# With all other quantum numbers fixed, each unique choice of DD is equivalent to a unique choice of mu.
-coefficient_array = np.asarray([[1/2, 0, -(1/2), -(1/2), 1/2, 1/2, -(1/2), -1],
-                                [0, -1, 1/2, 1/2, 1/2, -(1/2), 1/2, 1],
-                                [0, -1, 1/2, 1/2, -(1/2), 1/2, 1/2, 1],
-                                [1/2, 0, -(1/2), -(1/2), -(1/2), -(1/2), -(1/2), -1],
-                                [0, 0, 1, 1, 0, 0, 0, 1],
-                                [0, 1, 0, -1, 0, 0, 0, -1],
-                                [0, 1, -1, 0, 0, 0, 0, -1],
-                                [0, 0, 0, 0, 0, 0, 0, 1]])
+# If false, l_a1 will be taken as an additional conditioning variable, which decreases computational time significantly.
+l_a1 = 60        # If s_l_a1 = False, l_a1 must be chosen. This value must not exceed |(n/2)-j| in magnitude and |l_a1 - |(n/2)-j|| must be an integer.
+# End user inputs
 
 
-# Calculates the cardinality of the ontic states in Alice's and Bob's elementary state spaces (\varepsilon).
-# Also calculates mu
-def card_alice_vec(bell_c_):
+# Handle errors in choosing l_a1
+error = False
+# Check l_a1
+if not s_l_a1:
+    if not abs(l_a1 - n/2 - j)%1==0 or abs(l_a1) > abs(n/2 - j):
+        error = True
+        print('Choice of l_a1 is invalid!')
+
+
+# Define quantum numbers in terms of counts:
+# Columns: [AA,AB,BA,BB,CC,CD,DC,DD]
+n_def = [1, 1, 1, 1, 1, 1, 1, 1]
+j_def = [0, 0, 0, 0, 1/2, 1/2, 1/2, 1/2]
+m_a1_def = [0, 0, 0, 0, 1/2, 1/2, -1/2, -1/2]
+m_b2_def = [0, 0, 0, 0, 1/2, -1/2, 1/2, -1/2]
+l_a1_def = [1/2, 1/2, -1/2, -1/2, 0, 0, 0, 0]
+l_b2_def = [1/2, -1/2, 1/2, -1/2, 0, 0, 0, 0]
+b_map_def = [0, 1, 1, 0, 0, 1, 1, 0]
+DD_def = [0, 0, 0, 0, 0, 0, 0, 1]
+
+# We use DD rather than the path quantum number nu in this program because its range is simpler to define.
+# The quantum number nu will be calculated before calculating Upsilon_a and Upsilon_b.
+# With all other quantum numbers fixed, each unique choice of DD is equivalent to a unique choice of nu.
+
+# Invert the quantum number matrix, which will be used to map from quantum numbers to counts
+coefficient_array = np.linalg.inv(np.array([n_def, j_def, m_a1_def, m_b2_def, l_a1_def, l_b2_def, b_map_def, DD_def]))
+
+# Calculate the cardinality of the ontic states in Alice's and Bob's contextual sets (\varepsilon).
+def card_alice(counts_):
     # Count index: AA=0, AB=1, BA=2, BB=3, CC=4, CD=5, DC=6, DD=7
-    # The mu associated with \varepsilon^a
-    mu_ = (bell_c_[:, 0] + bell_c_[:, 3] + bell_c_[:, 5] + bell_c_[:, 6])/2
 
     # x = True bypasses numerical approximations used in scipy.special.factorial. This increases computational time.
-    x = False
+    # x= False leads to numerical instabilities and overflow issues for large n (no longer ints)
+    x = True
 
     # The base-4 counts associated with Alice's event
-    A_a1 = bell_c_[:, 0] + bell_c_[:, 1]
-    B_a1 = bell_c_[:, 2] + bell_c_[:, 3]
-    C_a1 = bell_c_[:, 4] + bell_c_[:, 5]
-    D_a1 = bell_c_[:, 6] + bell_c_[:, 7]
+    A_a1 = counts_[0] + counts_[1]
+    B_a1 = counts_[2] + counts_[3]
+    C_a1 = counts_[4] + counts_[5]
+    D_a1 = counts_[6] + counts_[7]
 
-    # Cardinality of \varepsilon^a. These are broken into separate terms to avoid overflow as much as possible.
-    x_a = scipy.special.factorial(A_a1, exact=x) / (scipy.special.factorial(bell_c_[:, 0], exact=x) * scipy.special.factorial(bell_c_[:, 4], exact=x))
-    x_b = scipy.special.factorial(B_a1, exact=x) / (scipy.special.factorial(bell_c_[:, 1], exact=x) * scipy.special.factorial(bell_c_[:, 5], exact=x))
-    x_c = scipy.special.factorial(C_a1, exact=x) / (scipy.special.factorial(bell_c_[:, 2], exact=x) * scipy.special.factorial(bell_c_[:, 6], exact=x))
-    x_d = scipy.special.factorial(D_a1, exact=x) / (scipy.special.factorial(bell_c_[:, 3], exact=x) * scipy.special.factorial(bell_c_[:, 7], exact=x))
+    # The factorials we will need
+    n_a = scipy.special.factorial(A_a1, exact=x)
+    n_b = scipy.special.factorial(B_a1, exact=x)
+    n_c = scipy.special.factorial(C_a1, exact=x)
+    n_d = scipy.special.factorial(D_a1, exact=x)
+    d_aa = scipy.special.factorial(counts_[0], exact=x)
+    d_ab = scipy.special.factorial(counts_[1], exact=x)
+    d_ba = scipy.special.factorial(counts_[2], exact=x)
+    d_bb = scipy.special.factorial(counts_[3], exact=x)
+    d_cc = scipy.special.factorial(counts_[4], exact=x)
+    d_cd = scipy.special.factorial(counts_[5], exact=x)
+    d_dc = scipy.special.factorial(counts_[6], exact=x)
+    d_dd = scipy.special.factorial(counts_[7], exact=x)
 
-    cardinality_alice = x_a * x_b * x_c * x_d
+    # Calculating the cardinality of Alice's contextual set
+    cardinality_alice = (n_a*n_b*n_c*n_d/(d_aa*d_ab*d_ba*d_bb*d_cc*d_cd*d_dc*d_dd))
 
-    return cardinality_alice, mu_
+    return cardinality_alice
 
 
-def card_bob_vec(bell_c_):
+def card_bob(counts_):
     # Count index: AA=0, AB=1, BA=2, BB=3, CC=4, CD=5, DC=6, DD=7
-    # The mu associated with \varepsilon^b
-    mu_ = (bell_c_[:, 0] + bell_c_[:, 3] + bell_c_[:, 5] + bell_c_[:, 6])/2
 
-    # x = True bypasses numerical approximations used in scipy.special.factorial. This increases computational time.
-    x = False
+    # x = True bypasses numerical approximations used in scipy.special.factorial.
+    # x= False leads to numerical instabilities and overflow issues for large n (no longer ints)
+    x = True
 
     # The base-4 counts associated with Bob's event
-    A_b2 = bell_c_[:, 0] + bell_c_[:, 2]
-    B_b2 = bell_c_[:, 1] + bell_c_[:, 3]
-    C_b2 = bell_c_[:, 4] + bell_c_[:, 6]
-    D_b2 = bell_c_[:, 5] + bell_c_[:, 7]
+    A_b2 = counts_[0] + counts_[2]
+    B_b2 = counts_[1] + counts_[3]
+    C_b2 = counts_[4] + counts_[6]
+    D_b2 = counts_[5] + counts_[7]
 
-    # Cardinality of  \varepsilon^b. These are broken into separate terms to avoid overflow as much as possible.
-    x_a = scipy.special.factorial(A_b2, exact=x) / (scipy.special.factorial(bell_c_[:, 0], exact=x)*scipy.special.factorial(bell_c_[:, 4], exact=x))
-    x_b = scipy.special.factorial(B_b2, exact=x) / (scipy.special.factorial(bell_c_[:, 1], exact=x)*scipy.special.factorial(bell_c_[:, 5], exact=x))
-    x_c = scipy.special.factorial(C_b2, exact=x) / (scipy.special.factorial(bell_c_[:, 2], exact=x)*scipy.special.factorial(bell_c_[:, 6], exact=x))
-    x_d = scipy.special.factorial(D_b2, exact=x) / (scipy.special.factorial(bell_c_[:, 3], exact=x)*scipy.special.factorial(bell_c_[:, 7], exact=x))
+    # The factorial we will need
+    n_a = scipy.special.factorial(A_b2, exact=x)
+    n_b = scipy.special.factorial(B_b2, exact=x)
+    n_c = scipy.special.factorial(C_b2, exact=x)
+    n_d = scipy.special.factorial(D_b2, exact=x)
+    d_aa = scipy.special.factorial(counts_[0], exact=x)
+    d_ab = scipy.special.factorial(counts_[1], exact=x)
+    d_ba = scipy.special.factorial(counts_[2], exact=x)
+    d_bb = scipy.special.factorial(counts_[3], exact=x)
+    d_cc = scipy.special.factorial(counts_[4], exact=x)
+    d_cd = scipy.special.factorial(counts_[5], exact=x)
+    d_dc = scipy.special.factorial(counts_[6], exact=x)
+    d_dd = scipy.special.factorial(counts_[7], exact=x)
 
-    cardinality_bob = x_a * x_b * x_c * x_d
+    # Calculating the cardinality of Alice's contextual set
+    cardinality_bob = (n_a*n_b*n_c*n_d/(d_aa*d_ab*d_ba*d_bb*d_cc*d_cd*d_dc*d_dd))
+    return cardinality_bob
 
-    return cardinality_bob, mu_
 
-
-# This is Upsilon, where summation ranges for l_a1, l_b2, and mu are determined through a guess and check method.
+# This is Upsilon, where summation ranges for l_a1, l_b2, and nu_0_a1_b2 are determined through a guess and check method.
 # Each possible combination of these quantum numbers is considered, without taking into account their interdependence.
-# This speeds up development time, but drastically increases computational time.
+# This speeds up development time when considering different choices of quantum numbers, but drastically increases computational time.
 # The vast majority of trials end in error.
-def Upsilon(n_, j_, m_a1_, m_b2_, l_a1_, bmap_, s_l_a1_, coefficient_array_):
-    # Many of the unique combinations of quantum numbers being summed over in this function will not be valid.
-    # This can be avoided by carefully considering the allowed ranges of the quantum numbers being summed over.
-    # Defining these ranges would significantly improve the speed of this calculation, but slows down development.
-    # In this code, we initially include the invalid combinations and remove them towards the end.
+def ontic_state_count(n_, j_, m_a1_, m_b2_, l_a1_, bmap_, s_l_a1_, coefficient_array_):
 
-    # Initialize the count
-    product_space_count_ = 0
+    # Initialize the ontic state count
+    ontic_state_count_ = 0
 
-    # Check to see if we should sum over all values of l_a1, or just use one.
+    # Check to see if we should sum over all values of l_a1
     if s_l_a1_:
         # Define l_a1 range
         l_a1_range_ = np.arange(-(n_ / 2 - j_), (n_ / 2 - j_) + 1, 1)
@@ -123,19 +146,19 @@ def Upsilon(n_, j_, m_a1_, m_b2_, l_a1_, bmap_, s_l_a1_, coefficient_array_):
             # Define array to store quantum numbers (to be used with the coefficient array to calculate counts)
             q_number_array = np.ndarray(shape=(8, 8))
 
-            # Define the count array, which stores the counts associated with every complete set of quantum numbers
+            # Define the count array to store the counts associated with each set of quantum numbers
             count_array = []
 
-            # Sum over the "non-local" degree of freedom (Alice and Bob may disagree).
+            # Sum over the path degree of freedom
             for k in range(len(DD_range_)):
 
-                # Fill the quantum number array with the chosen values for the complete set of quantum numbers
+                # Fill the quantum number array
                 q_number_array[:] = n_, j_, m_a1_, m_b2_, l_a1_range_[i_a], l_b2_range_[i_b], bmap_, DD_range_[k]
 
-                # Calculate the associated counts
+                # Calculate the associated counts using the inverted matrix calculated earlier
                 count_array.append(np.sum(q_number_array * coefficient_array_, 1))
 
-            # Make sure the count array is valid. This is where we remove invalid combinations of quantum numbers.
+            # Make sure the count array is valid. This is where we deal with invalid combinations of quantum numbers.
             count_array = np.asarray(count_array)
             count_array_groomed = []
 
@@ -155,20 +178,29 @@ def Upsilon(n_, j_, m_a1_, m_b2_, l_a1_, bmap_, s_l_a1_, coefficient_array_):
 
                 # Identify situations in which there are no valid sets of counts
                 if len(count_array_groomed) > 0:
-                    count_array_groomed = np.asarray(count_array_groomed)
+                    count_array_groomed = np.asarray(count_array_groomed, dtype=int)
+                    
+                    # Define range to iterate over
+                    sum_range = len(count_array_groomed)
+                    
+                    # Calculate the path quantum number nu_0_a1_b2 and the contextual set cardinalities for all valid sets of counts
+                    # Initialize Upsilon_a and Upsilon_b
+                    Upsilon_a = 0
+                    Upsilon_b = 0
+                    nu_0_a1_b2 = []
+                    for i in range(sum_range):
+                        # Calculate the path quantum number
+                        nu_0_a1_b2.append((count_array_groomed[i, 0] + count_array_groomed[i, 3] + count_array_groomed[i, 5] + count_array_groomed[i, 6]) / 4)
+                        # Calculate the interference term, where the first path quantum number in the array is always the reference value.
+                        sign = (-1)**(nu_0_a1_b2[0]-nu_0_a1_b2[i])
+                        # Calculate Alice's and Bob's contextual set cardinality and include it in the alternating sums for Upsilon_a and Upsilon_b
+                        Upsilon_a += card_alice(count_array_groomed[i])*sign
+                        Upsilon_b += card_bob(count_array_groomed[i])*sign
 
-                    # Use the valid sets of counts to calculate the cardinality of Alice's and Bob's sub-ensembles
-                    phi_alice_ = card_alice_vec(count_array_groomed)
-                    phi_bob_ = card_bob_vec(count_array_groomed)
-                    temp_range = len(count_array_groomed)
+                    # Calculate the product of Upsilon_a and Upsilon_b (i.e. the "Born rule")
+                    ontic_state_count_ += Upsilon_a*Upsilon_b
 
-                    # Sum over all possible combinations of mu_Alice and mu_Bob, accounting for interference.
-                    for v in range(temp_range):
-                        for u in range(temp_range):
-                            product_space_count_ += phi_alice_[0][v]*phi_bob_[0][u]*((-1)**abs((phi_bob_[1][u]-phi_alice_[1][v])/2))
-
-    # return the total number of ordered pairs of ontic states in Alice's and Bob's product space (after interference).
-    return product_space_count_
+    return ontic_state_count_
 
 
 # Calculates the probability distribution as a function of theta_ab in the new model
@@ -201,12 +233,11 @@ def prob_ssg(n_, j_, m_a1_, m_b2_, l_a1_, s_l_a1_, coefficient_array_):
         # Initialize the numerator and denominator of our probability calculation
         num = 0
         den = 0
-        total = 0
 
         # Iterate over all allowed values of m_b2
         for q in range(len(m_b2_range_)):
-            # Get Upsilon
-            temp_count = Upsilon(n_, j_, m_a1_, m_b2_range_[q], l_a1_, bmap_, s_l_a1_, coefficient_array_)
+            # Count ontic states
+            temp_count = ontic_state_count(n_, j_, m_a1_, m_b2_range_[q], l_a1_, bmap_, s_l_a1_, coefficient_array_)
 
             # Check to see if the current value of m_b2 is the one the user is interested in.
             # If True, then this count contributes to num and den, if not, it only contributes to den.
@@ -218,9 +249,11 @@ def prob_ssg(n_, j_, m_a1_, m_b2_, l_a1_, s_l_a1_, coefficient_array_):
 
         # Verify that something has not gone wrong, leading to den=0.
         # This can happen if the conditioning variables are incompatible with each other.
-        if den != 0:
+        if not den == 0:
             # Calculate the probability in the new model
-            temp_p = num / den
+            # print(num)
+            # print(den)
+            temp_p = num/den
 
             # Calculate theta
             theta_ = bmap_*math.pi/n_
@@ -235,7 +268,7 @@ def prob_ssg(n_, j_, m_a1_, m_b2_, l_a1_, s_l_a1_, coefficient_array_):
             wigner_x_data.append(theta_)
 
             # Calculate and record the difference between QM and the new model
-            diff_data.append(abs(temp_p-temp_w))
+            diff_data.append(abs(float(temp_p)-temp_w))
 
         # Advance to the next theta
         bmap_ += 1
@@ -263,35 +296,36 @@ def wigner_formula(j_, m_, mp_, theta_):
                         wigner += ((-1) ** (mp_ - m_ + q)) * (math.sqrt(term_1) / term_2) * term_3
         q += 1
     # We then square the result to obtain a probability (Born rule)
-    return (wigner) ** 2
+    return wigner ** 2
 
 
-# Execute the calculation and store the data for plotting
-data = prob_ssg(n, j, m_a1, m_b2, l_a1, s_l_a1, coefficient_array)
+# Execute the calculation and generate plot
+if not error:
+    data = prob_ssg(n, j, m_a1, m_b2, l_a1, s_l_a1, coefficient_array)
 
 
-# Generate plots
-plt.rcParams.update({'font.size': 14})
-fig, axs = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, sharex='all')
-fig.subplots_adjust(hspace=.00)
-axs[0].plot(data[0], data[1], c="blue", label="QM")
-axs[0].plot(data[2], data[3], c="red", label='New Model')
-plot_title_N_l_a1 = "n="+str(n)+r", j="+str(j)+r", $m_{a1}$="+str(m_a1)+r", $m_{b2}$="+str(m_b2)
-plot_title_Y_l_a1 = "n="+str(n)+r", j="+str(j)+r", $m_{a1}$="+str(m_a1)+r", $m_{b2}$="+str(m_b2)+r", $l_{a1}$=+$\pm$"+str(abs(l_a1))
+    # Generate plots
+    plt.rcParams.update({'font.size': 14})
+    fig, axs = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]}, sharex='all')
+    fig.subplots_adjust(hspace=.00)
+    axs[0].plot(data[0], data[1], c="blue", label="QM")
+    axs[0].plot(data[2], data[3], c="red", label='New Model')
+    plot_title_N_l_a1 = "n="+str(n)+r", j="+str(j)+r", $m_{a1}$="+str(m_a1)+r", $m_{b2}$="+str(m_b2)
+    plot_title_Y_l_a1 = "n="+str(n)+r", j="+str(j)+r", $m_{a1}$="+str(m_a1)+r", $m_{b2}$="+str(m_b2)+r", $l_{a1}$=$\pm$"+str(abs(l_a1))
 
-if s_l_a1:
-    plot_title = plot_title_N_l_a1
+    if s_l_a1:
+        plot_title = plot_title_N_l_a1
 
-else:
-    plot_title = plot_title_Y_l_a1
+    else:
+        plot_title = plot_title_Y_l_a1
 
-axs[0].set(ylabel='Probability', title=plot_title)
-axs[0].set_ylim(-0.05, 1.05)
-axs[0].legend()
+    axs[0].set(ylabel='Probability', title=plot_title)
+    axs[0].set_ylim(-0.05, 1.05)
+    axs[0].legend()
 
-axs[1].plot(data[0], data[4])
-axs[1].set(xlabel=r'$\theta_{ab}$ (radians)', ylabel=r'|$\Delta$|')
-axs[1].set_xlim(0, math.pi)
-axs[1].set_ylim(-0.005, max(data[4])+.005)
+    axs[1].plot(data[0], data[4])
+    axs[1].set(xlabel=r'$\theta_{ab}$ (radians)', ylabel=r'|$\Delta$|')
+    axs[1].set_xlim(0, math.pi)
+    axs[1].set_ylim(-0.005, max(data[4])+.005)
 
-plt.show()
+    plt.show()
