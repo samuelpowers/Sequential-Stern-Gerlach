@@ -16,7 +16,7 @@ j = 2
 m_a1 = 0
 m_b2 = 0
 
-# Treat l_at as a nuisance variable (Increases )?
+# Treat l_at as a nuisance variable (Increases computational time)?
 s_l_a1 = False
 # If false, l_a1 will be taken as an additional conditioning variable, which decreases computational time significantly.
 l_a1 = 60        # If s_l_a1 = False, l_a1 must be chosen. This value must not exceed |(n/2)-j| in magnitude and |l_a1 - |(n/2)-j|| must be an integer.
